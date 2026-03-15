@@ -1,18 +1,15 @@
 """
-Heart Rate Monitoring in Time Domain!
+Heart Rate and HRV from PPG using Time-Domain Peak Detection
 
-A real PPG waveform sample set is in the file labeled HW5.1A.PPG.txt. 
+Loads a 4096-sample PPG waveform (125 Hz, ~33 seconds) from HW5.1A.PPG.txt.
+Uses scipy.find_peaks to locate heartbeat peaks, then computes:
+  - Heart rate (BPM) from the average peak-to-peak interval
+  - Max HRV: the largest beat-to-beat interval change
+  - RMS HRV (RMSSD): root-mean-square of successive interval changes
 
-These samples are normalized to full scale of the ADC, and are sampled at 125Hz. 
-The trace length is 4096 samples (about 30 seconds). 
-
-In the time domain, using the scipy.find_peaks function (or write your own), 
-write a simple peak detection algorithm and use it to compute the time
-differences between consecutive peaks of the PPG waveform. 
-
-From here, determine the heart rate (the average difference between peaks, in beats-per-minute), 
-as well as the maximum heart rate variability as well as the RMS heart rate variability (HRV). 
-Submit your code, as well as the BPM and max/RMS HRV values
+HRV measures how much the time between consecutive beats *changes* from
+one beat to the next — not the intervals themselves, but the differences
+between successive intervals.
 
 """
 from scipy.signal import find_peaks
@@ -21,7 +18,6 @@ import matplotlib.pyplot as plt
 import scipy.stats as stats
 
 ppg_waveform = np.loadtxt('HW5.1A.PPG.txt')
-
 peak_indices, properties = find_peaks(ppg_waveform, width=15) # chose width of 15 after tuning between 10-50
 dt = 1/125
 print("Number of peaks found in ~33 second dataset:", len(peak_indices), "peaks")
@@ -38,33 +34,35 @@ beats_per_s = 1/avg_time_per_beat
 bpm = beats_per_s * 60
 print("Heart Rate:", bpm, "beats per minute")
 
-# maximum heart rate variability
-max_interval = max(time_dif_between_peaks)
-max_index = np.argmax(time_dif_between_peaks)
-t_max_start = peak_indices[max_index] * dt
-t_max_end = peak_indices[max_index + 1] * dt
-print("Max of", max_interval*1000, "ms found between", t_max_start, "and", t_max_end, "s")
-
-# find root mean square heart rate variability (RMSSD)
-successive_diffs_sec = []
+# differences between consecutive IBIs (for HRV)
+interval_changes = []
 for i in range(len(time_dif_between_peaks) - 1):
-    diff = time_dif_between_peaks[i + 1] - time_dif_between_peaks[i]
-    successive_diffs_sec.append(diff)
+    delta = time_dif_between_peaks[i + 1] - time_dif_between_peaks[i]
+    interval_changes.append(delta)
 
-sum_sq = sum(d ** 2 for d in successive_diffs_sec)
-rms_hrv_sec = (sum_sq / len(successive_diffs_sec)) ** 0.5
+# maximum heart rate variability = largest IBI change
+abs_changes = [abs(d) for d in interval_changes]
+max_hrv_sec = max(abs_changes)
+max_hrv_index = np.argmax(abs_changes)
+t_max_start = peak_indices[max_hrv_index + 1] * dt
+t_max_end = peak_indices[max_hrv_index + 2] * dt
+print(f"Max HRV: {max_hrv_sec * 1000:.2f} ms found between {t_max_start} and {t_max_end} s")
+
+# root mean square heart rate variability (RMSSD)
+sum_sq = sum(d ** 2 for d in interval_changes)
+rms_hrv_sec = (sum_sq / len(interval_changes)) ** 0.5
 rms_hrv_ms = rms_hrv_sec * 1000
-print("RMS HRV:", rms_hrv_ms, "ms")
+print(f"RMS HRV: {rms_hrv_ms:.2f} ms")
 
 t = np.arange(0, dt*4096, dt)
 plt.plot(t, ppg_waveform, label='PPG')
 plt.plot(peak_indices * dt, ppg_waveform[peak_indices], 'ro', markersize=4, label='Peaks')
 # highlight the max interval on the plot (between peak max_index and max_index+1)
-
-plt.axvspan(t_max_start, t_max_end, alpha=0.2, color='red', label=f'Max interval = {max_interval:.3f} s')
+plt.axvspan(t_max_start, t_max_end, alpha=0.2, color='red', label=f'Max HRV = {max_hrv_sec*1000:.1f} ms')
 plt.xlabel("Time (s)")
 plt.ylabel("Waveform (Raw ADC Values)")
 plt.title("PPG Waveform Sample")
+plt.xlim(0,33)
 plt.legend()
 plt.show()
 
