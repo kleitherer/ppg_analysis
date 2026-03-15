@@ -1,5 +1,10 @@
 # PPG Analysis — HW5 Part 1
 
+We want to employ different EE signal processing techniques to analyze heart rate performance from real ADC waveform data. 
+
+We first try time domain peak detection to get the frequency of the heart beat, then go into the fourier domain to find the fundamental frequency.
+Once we find the frequency of our heartbeat, we convert to BPM using: f * 60 = BPM. Once we have BPMs from both techniques, we match and compare, as they should be the same.
+
 **Data:** `HW5.1A.PPG.txt` (clean) and `HW5.1C.PPG.txt` (motion-corrupted), 4096 samples at 125 Hz (~33 s).
 
 ## 1A — Peak Detection (`heart-rate-peak-detect.py`)
