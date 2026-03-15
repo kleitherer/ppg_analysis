@@ -75,8 +75,9 @@ freq_pos = freq[1:N//2]
 # filter in frequency domain... don't apply hamming
 fft_orig = np.fft.fft(ppg_demean)
 # Zero out 55–60 Hz and -60 to -55 Hz; also 0.90–0.96 Hz and -0.96 to -0.90 Hz; and everything below 0.90 Hz
-mask_55_60 = (np.abs(freq) < 3) | (np.abs(freq) > 4)
-mask_above_090 = np.abs(freq) >= 0.90   # zero out everything under 0.90 Hz
+mask_55_60 = (np.abs(freq) < 4.4) | (np.abs(freq) > 4.7)
+mask_55_60 = (np.abs(freq) < 2.9) | (np.abs(freq) > 3.3)
+mask_above_090 = np.abs(freq) >= 1   # zero out everything under 0.90 Hz
 mask_keep = mask_55_60 & mask_above_090
 fft_zeroed = fft_orig.copy()
 fft_zeroed[~mask_keep] = 0
