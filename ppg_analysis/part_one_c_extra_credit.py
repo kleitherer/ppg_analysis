@@ -1,17 +1,17 @@
 """
-Motion artifacts refer to unwanted signals induced by
-physical movement of the tissue and blood, especially low-
-pressure venous blood that contains no pulse.
-• The motion cadence of activities, e.g., walking, running,
-can overlap with the range of heart beat
+Heart Rate Extraction from a Motion-Corrupted PPG (HW5.1C)
 
-On-device gyroscopes and accelerometers can supply
-data about a device’s movement in the physical world
+Loads a PPG waveform with finger-tapping motion artifacts (~3x larger than
+the heart rate signal) and attempts to recover the true heart rate using
+three filtering approaches:
+  1. Raw peak detection (no filtering)
+  2. Time-domain bandpass filter (1-3 Hz via Butterworth)
+  3. Frequency-domain harmonic zeroing: keeps the fundamental HR band
+     (1.4-1.6 Hz) and zeros out its harmonics at n * [1.4, 1.6] Hz
+     for n = 2, 3, 4, ... to clean the waveform without a traditional filter
 
-Finger tapping motion artifacts: ~3x larger than HR signal
-
-part_one_c_extra_credit.py 2>&1 | grep -v "ApplePersistenceIgnoreState"
-
+Plots time-domain waveforms (raw, bandpass, harmonic-zeroed) and their
+frequency spectra, and reports heart rate from each method.
 """
 from scipy.signal import find_peaks, butter, filtfilt
 import numpy as np
@@ -62,7 +62,7 @@ ax2.plot(t, ppg_filtered, label=f'PPG filtered {min_f:.2f}-{max_f:.2f} Hz')
 ax2.plot(peak_indices * dt, ppg_filtered[peak_indices], 'ro', markersize=4, label='Filtered Peaks')
 ax2.set_xlabel("Time (s)")
 ax2.set_ylabel("Waveform")
-ax2.set_title("Bandpass (1-3Hz) Filtered Signal from PPG ")
+ax2.set_title("Bandpass (1-3Hz) Filtered Signal from PPG (no FFT filtering or manipulation)")
 ax2.legend()
 ax2.grid(True, alpha=0.3)
 
@@ -74,13 +74,22 @@ freq_pos = freq[1:N//2]
 
 # filter in frequency domain... don't apply hamming
 fft_orig = np.fft.fft(ppg_demean)
-# Zero out 55–60 Hz and -60 to -55 Hz; also 0.90–0.96 Hz and -0.96 to -0.90 Hz; and everything below 0.90 Hz
-mask_55_60 = (np.abs(freq) < 4.4) | (np.abs(freq) > 4.7)
-mask_55_60 = (np.abs(freq) < 2.9) | (np.abs(freq) > 3.3)
-mask_above_090 = np.abs(freq) >= 1   # zero out everything under 0.90 Hz
-mask_keep = mask_55_60 & mask_above_090
+
+# Keep the fundamental band (1.4–1.6 Hz) and zero out its harmonics
+# Harmonics fall at n * [1.4, 1.6] Hz for n = 2, 3, 4, ...
+fund_lo, fund_hi = 1.4, 1.6
 fft_zeroed = fft_orig.copy()
-fft_zeroed[~mask_keep] = 0
+
+# zero out DC drift and very low-frequency noise (below ~42 bpm)
+fft_zeroed[np.abs(freq) < 0.6] = 0
+
+# zero out each harmonic band: n * [fund_lo, fund_hi] for n = 2, 3, ...
+n = 2
+while n * fund_lo < fs / 2:
+    harm_lo = n * fund_lo
+    harm_hi = n * fund_hi
+    fft_zeroed[(np.abs(freq) >= harm_lo) & (np.abs(freq) <= harm_hi)] = 0
+    n += 1
 ppg_zeroed = np.real(np.fft.ifft(fft_zeroed))
 # Magnitude for frequency plot (after zeroing)
 magnitude_zeroed = np.abs(fft_zeroed) / N
@@ -90,10 +99,9 @@ zeroed_peak_indices, _ = find_peaks(ppg_zeroed, width=15)
 print("Number of peaks found in freq-domain filtered waveform:", len(zeroed_peak_indices), "peaks")
 print("Freq-domain filtered HR:", bpm_from_peaks(zeroed_peak_indices, dt), "bpm")
 ax3.plot(t, ppg_zeroed, label='PPG freq-domain filtered')
-ax3.plot(zeroed_peak_indices * dt, ppg_zeroed[zeroed_peak_indices], 'ro', markersize=4, label='Peaks')
 ax3.set_xlabel("Time (s)")
 ax3.set_ylabel("Waveform")
-ax3.set_title("Reconstructed Signal (freq-domain zeroing)")
+ax3.set_title("Reconstructed Signal (inverse FFT after harmonics zeroed in fourier)")
 ax3.legend()
 ax3.grid(True, alpha=0.3)
 
@@ -130,20 +138,20 @@ fig, (ax4, ax5, ax6) = plt.subplots(3, 1, sharex=True, figsize=(8, 6))
 ax4.stem(freq_pos, mag_pos, label="Hamming Pre-Filtered")
 ax4.scatter(fund_freq_raw, fund_mag_raw, color='red', s=60, zorder=5, label=f'Fundamental ({fund_freq_raw:.4f} Hz)')
 ax4.set_ylabel('Magnitude')
-ax4.set_title('Frequency Domain (pre bandpass 1–3 Hz)')
+ax4.set_title('Frequency Domain of Raw Signal')
 ax4.grid(True, alpha=0.3)
 
 ax5.stem(freq_pos, mag_pos_filtered, label="Hamming Post Time Domain Bandpass Filtered")
 ax5.scatter(fund_freq_bp, fund_mag_bp, color='red', s=60, zorder=5, label=f'Fundamental ({fund_freq_bp:.4f} Hz)')
 ax5.set_ylabel('Magnitude')
 ax5.set_title('Frequency Domain (after bandpass 1–3 Hz)')
-ax5.set_xlim(0, 5)
+ax5.set_xlim(0, 6)
 ax5.grid(True, alpha=0.3)
 
-ax6.stem(freq_pos, mag_zeroed_pos, label="Zeroed 3-4Hz in Freq Domain")
+ax6.stem(freq_pos, mag_zeroed_pos, label="Harmonics zeroed in Freq Domain")
 ax6.scatter(fund_freq_zeroed, fund_mag_zeroed, color='red', s=60, zorder=5, label=f'Fundamental ({fund_freq_zeroed:.4f} Hz)')
 ax6.set_ylabel('Magnitude')
-ax6.set_title('Frequency Domain (freq-domain zeroed)')
+ax6.set_title('Frequency Domain (harmonics zeroed)')
 ax6.grid(True, alpha=0.3)
 
 plt.tight_layout()
